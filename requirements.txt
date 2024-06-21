@@ -1,0 +1,5 @@
+pip install python-dotenv
+pip install datasets
+pip install pyarrow
+pip install torch torchvision
+pip install pycocotools

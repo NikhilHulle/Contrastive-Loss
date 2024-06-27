@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import numpy as np
 
 # class VisionTransformer(nn.Module):
 #     def __init__(self, image_size=224, patch_size=16, num_layers=12, num_heads=12, hidden_dim=768, mlp_dim=3072):
@@ -55,6 +56,7 @@ class VisionTransformer(nn.Module):
         num_patches = (image_size // patch_size) ** 2
         self.pos_embedding = nn.Parameter(torch.zeros(1, num_patches + 1, hidden_dim))
         self.cls_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
         
         # Transformer encoder layers
         self.encoder_layers = nn.ModuleList([
@@ -86,8 +88,9 @@ class VisionTransformer(nn.Module):
         x = self.norm(x)
         x = x.mean(dim=1)  # Using mean pooling across the token dimension
         # x = self.pool(x)  # If using modified pool
+        logit_scale = torch.clamp(self.logit_scale.exp(), max=100)
 
-        return x
+        return x * logit_scale
 
     
 
@@ -111,6 +114,7 @@ class TextTransformer(nn.Module):
         # Normalization and pooling
         self.norm = nn.LayerNorm(hidden_dim)
         self.pool = nn.AdaptiveAvgPool1d(1)
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
     
     # def forward(self, input_ids, attention_mask=None):
     #     # Token embedding
@@ -164,9 +168,10 @@ class TextTransformer(nn.Module):
 
         x = self.norm(x)
         x = self.pool(x.transpose(1, 2)).squeeze(2)
+        logit_scale = torch.clamp(self.logit_scale.exp(), max=100)
         print("Final output shape:", x.shape)
 
-        return x
+        return x * logit_scale
 
 
 

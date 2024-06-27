@@ -3,3 +3,6 @@ pip install datasets
 pip install pyarrow
 pip install torch torchvision
 pip install pycocotools
+
+# conda activate /projects/nihu3946/envs/ICLR
+# export PYTHONUSERBASE=/projects/nihu3946/envs/ICLR/pip_packages

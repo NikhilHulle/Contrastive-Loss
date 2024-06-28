@@ -67,15 +67,20 @@ class MSCOCODataset(BaseDataset):
 
         captions = annotations['caption']
 
+        #if self.tokenizer:
+            #captions = self.tokenizer(captions, add_special_tokens=True, return_tensors='pt', padding=True, truncation=True)
+        
         if self.tokenizer:
-            captions = self.tokenizer(captions, add_special_tokens=True, return_tensors='pt', padding=True, truncation=True)
-        
-        
+        # Tokenize all captions
+          encoded_captions = self.tokenizer(captions, padding=True, truncation=True, return_tensors='pt')
+          return {'image': image, 'captions': encoded_captions['input_ids']}
+    
+        return {'image': image, 'captions': captions}
 
         # print(f"Item keys: {item.keys()}")
         # return {'image': image, 'captions': captions}
 
-        return {'image': image, 'captions': captions['input_ids'].squeeze()}
+        #return {'image': image, 'captions': captions['input_ids'].squeeze()}
 
     def __len__(self):
         return len(self.dataset[self.split])

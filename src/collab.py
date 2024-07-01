@@ -125,7 +125,7 @@ def train(num_epochs, dataloader, model_vision, model_text, optimizer, device, w
             epoch_accuracy += accuracy
             global_step += 1
 
-	    wandb.log({
+            wandb.log({
                 "epoch": epoch + 1,
                 "train_loss": loss.item(),
                 "train_accuracy": accuracy,
@@ -284,26 +284,22 @@ def main():
         "warmup_steps": warmup_steps
     })
     start_time = time.time()
-    vision_transformer, text_transformer, train_losses, train_accuracies = train(num_epochs, train_dataloader, vision_transformer, text_transformer, optimizer, device)
+    vision_transformer, text_transformer, train_losses, train_accuracies = train(num_epochs, train_dataloader, vision_transformer, text_transformer, optimizer, device , warmup_steps)
     train_time = time.time() - start_time
     print(f"Training completed in {train_time:.2f} seconds")
 
     val_losses = []
     val_accuracies = []
     print("Starting validation")
+    best_val_accuracy = 0
     start_time = time.time()
     for epoch in range(num_epochs):
-        val_loss, val_accuracy, i2t_accuracy, t2i_accuracy  = evaluate(vision_transformer, text_transformer, val_dataloader, device, epoch, warmup_steps)
+        val_loss, val_accuracy, i2t_accuracy, t2i_accuracy  = evaluate(vision_transformer, text_transformer, val_dataloader, device, epoch)
         val_losses.append(val_loss)
         val_accuracies.append(val_accuracy)
         best_val_accuracy = max(best_val_accuracy, val_accuracy)
 
         wandb.log({
-            "epoch": epoch + 1,
-            "epoch_val_loss": val_loss,
-            "epoch_val_accuracy": val_accuracy,
-            "epoch_i2t_accuracy": i2t_accuracy,
-            "epoch_t2i_accuracy": t2i_accuracy,
             "best_val_accuracy": best_val_accuracy,
         })
         print(f"Epoch [{epoch+1}/{num_epochs}], Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}")

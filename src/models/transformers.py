@@ -101,6 +101,7 @@ class TextTransformer(nn.Module):
     def __init__(self, vocab_size, max_seq_len, num_layers=12, num_heads=12, hidden_dim=768, mlp_dim=3072):
         super().__init__()
         self.hidden_dim = hidden_dim
+        self.max_seq_len = max_seq_len
         
         # Token embedding
         self.token_embedding = nn.Embedding(vocab_size, hidden_dim)

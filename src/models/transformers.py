@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import torch.nn.functional as F
 
 # class VisionTransformer(nn.Module):
 #     def __init__(self, image_size=224, patch_size=16, num_layers=12, num_heads=12, hidden_dim=768, mlp_dim=3072):
@@ -105,6 +106,7 @@ class TextTransformer(nn.Module):
         self.token_embedding = nn.Embedding(vocab_size, hidden_dim)
         self.pos_embedding = nn.Parameter(torch.zeros(1, max_seq_len, hidden_dim))
         
+        
         # Transformer encoder layers
         self.encoder_layers = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(hidden_dim, num_heads, mlp_dim),
@@ -146,7 +148,12 @@ class TextTransformer(nn.Module):
         x = self.token_embedding(input_ids)
         seq_len = x.size(1)
 
-        x = x + self.pos_embedding[:, :seq_len]
+        if seq_len <= self.max_seq_len:
+            pos_emb = self.pos_embedding[:, :seq_len, :]
+        else:
+            pos_emb = F.interpolate(self.pos_embedding.transpose(1, 2), size=seq_len, mode='linear', align_corners=False).transpose(1, 2)
+
+        x = x + pos_emb
 
         if attention_mask is not None:
             

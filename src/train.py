@@ -374,7 +374,7 @@ def main():
     val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=False, collate_fn=custom_collate_fn, drop_last=True)
 
     vision_transformer = VisionTransformer().to(device)
-    text_transformer = TextTransformer(vocab_size=tokenizer.vocab_size, max_seq_len=64).to(device)
+    text_transformer = TextTransformer(vocab_size=tokenizer.vocab_size, max_seq_len=128).to(device)
     
     optimizer = torch.optim.Adam(list(vision_transformer.parameters()) + list(text_transformer.parameters()))
     

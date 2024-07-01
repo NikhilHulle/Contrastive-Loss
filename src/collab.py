@@ -255,16 +255,16 @@ def main():
     ])
 
     # Load a subset of the dataset for testing
-    #num_test_samples = 64
-    #num_train_samples = 128
+    num_test_samples = 128
+    num_train_samples = 640
     full_train_dataset = MSCOCODataset(split='train', transform=transform, tokenizer=tokenizer)
     full_val_dataset = MSCOCODataset(split='validation', transform=transform, tokenizer=tokenizer)
 
-    #train_dataset = Subset(full_train_dataset, range(num_train_samples))
-    #val_dataset = Subset(full_val_dataset, range(num_test_samples))
+    train_dataset = Subset(full_train_dataset, range(num_train_samples))
+    val_dataset = Subset(full_val_dataset, range(num_test_samples))
 
-    train_dataset = full_train_dataset
-    val_dataset = full_val_dataset
+    #train_dataset = full_train_dataset
+    #val_dataset = full_val_dataset
 
     batch_size = 64
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
@@ -275,15 +275,15 @@ def main():
     
     optimizer = torch.optim.Adam(list(vision_transformer.parameters()) + list(text_transformer.parameters()), lr=1e-5)
     
-    num_epochs = 5000
+    num_epochs = 3000
     warmup_steps = 2000
     print(f"Starting training for {num_epochs} epochs")
     wandb.init(project="Contrastive-loss", config={
         "learning_rate": 1e-5,
         "batch_size": batch_size,
         "num_epochs": num_epochs,
-        #"num_train_samples": num_train_samples,
-        #"num_test_samples": num_test_samples,
+        "num_train_samples": num_train_samples,
+        "num_test_samples": num_test_samples,
         "warmup_steps": warmup_steps
     })
     start_time = time.time()

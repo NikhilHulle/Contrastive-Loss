@@ -207,15 +207,15 @@ def main():
     ])
 
     # Load a subset of the dataset for testing
-    num_test_samples = 100
-    num_train_samples = 300
+    num_test_samples = 64
+    num_train_samples = 128
     full_train_dataset = MSCOCODataset(split='train', transform=transform, tokenizer=tokenizer)
     full_val_dataset = MSCOCODataset(split='validation', transform=transform, tokenizer=tokenizer)
 
     train_dataset = Subset(full_train_dataset, range(num_train_samples))
     val_dataset = Subset(full_val_dataset, range(num_test_samples))
 
-    batch_size = 128
+    batch_size = 64
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
 

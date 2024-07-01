@@ -10,6 +10,7 @@ from models.transformers import VisionTransformer, TextTransformer
 import matplotlib.pyplot as plt
 from tqdm import tqdm, trange
 import time
+import wandb
 
 
 
@@ -66,6 +67,15 @@ def compute_accuracy(similarity_matrix, captions_per_image):
     
     return correct / total
 
+def compute_gradient_norm(model):
+    total_norm = 0
+    for p in model.parameters():
+        if p.grad is not None:
+            param_norm = p.grad.data.norm(2)
+            total_norm += param_norm.item() ** 2
+    return total_norm ** 0.5
+
+
 def train(num_epochs, dataloader, model_vision, model_text, optimizer, device, warmup_steps=1000):
     model_vision.train()
     model_text.train()
@@ -77,6 +87,7 @@ def train(num_epochs, dataloader, model_vision, model_text, optimizer, device, w
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         epoch_accuracy = 0.0
+        epoch_start_time = time.time()
         for batch in tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs}"):
             images, captions = batch['images'].to(device), batch['captions'].to(device)
             captions_per_image = torch.tensor(batch['captions_per_image'], device=device)
@@ -107,26 +118,48 @@ def train(num_epochs, dataloader, model_vision, model_text, optimizer, device, w
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            grad_norm_vision = compute_gradient_norm(model_vision)
+            grad_norm_text = compute_gradient_norm(model_text)
             
             epoch_loss += loss.item()
             epoch_accuracy += accuracy
             global_step += 1
+
+	    wandb.log({
+                "epoch": epoch + 1,
+                "train_loss": loss.item(),
+                "train_accuracy": accuracy,
+                "learning_rate": optimizer.param_groups[0]['lr'],
+                "gradient_norm_vision": grad_norm_vision,
+                "gradient_norm_text": grad_norm_text
+            }, step=global_step)
         
         epoch_loss /= len(dataloader)
         epoch_accuracy /= len(dataloader)
+        epoch_time = time.time() - epoch_start_time
         train_losses.append(epoch_loss)
         train_accuracies.append(epoch_accuracy)
     
         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.4f}, Accuracy: {epoch_accuracy:.4f}")
+        wandb.log({
+            "epoch": epoch + 1,
+            "epoch_train_loss": epoch_loss,
+            "epoch_train_accuracy": epoch_accuracy,
+            "epoch_time": epoch_time,
+            "learning_rate": optimizer.param_groups[0]['lr']
+        })
+	
     
     return model_vision, model_text, train_losses, train_accuracies
 
-def evaluate(model_vision, model_text, dataloader, device):
+def evaluate(model_vision, model_text, dataloader, device, epoch):
     model_vision.eval()
     model_text.eval()
     
     total_loss = 0.0
     total_accuracy = 0.0
+    total_i2t_accuracy = 0.0
+    total_t2i_accuracy = 0.0
     
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Evaluating"):
@@ -147,16 +180,31 @@ def evaluate(model_vision, model_text, dataloader, device):
             # Compute loss
             loss = diagonal_cross_entropy_loss(similarity_matrix, captions_per_image)
             
+
+            i2t_accuracy = compute_accuracy(similarity_matrix, captions_per_image)
+            t2i_accuracy = compute_accuracy(similarity_matrix.t(), captions_per_image)
+        
             # Compute accuracy
-            accuracy = compute_accuracy(similarity_matrix, captions_per_image)
+            # accuracy = compute_accuracy(similarity_matrix, captions_per_image)
             
             total_loss += loss.item()
-            total_accuracy += accuracy
+            total_accuracy += (i2t_accuracy + t2i_accuracy) / 2
+            total_i2t_accuracy += i2t_accuracy
+            total_t2i_accuracy += t2i_accuracy
     
     avg_loss = total_loss / len(dataloader)
     avg_accuracy = total_accuracy / len(dataloader)
+    avg_i2t_accuracy = total_i2t_accuracy / len(dataloader)
+    avg_t2i_accuracy = total_t2i_accuracy / len(dataloader)
+    wandb.log({
+        "epoch": epoch + 1,
+        "val_loss": avg_loss,
+        "val_accuracy": avg_accuracy,
+        "val_i2t_accuracy": avg_i2t_accuracy,
+        "val_t2i_accuracy": avg_t2i_accuracy
+    })
     
-    return avg_loss, avg_accuracy
+    return avg_loss, avg_accuracy, avg_i2t_accuracy, avg_t2i_accuracy
 
 def plot_metrics(train_losses, train_accuracies, val_losses, val_accuracies):
     epochs = range(1, len(train_losses) + 1)
@@ -225,8 +273,16 @@ def main():
     optimizer = torch.optim.Adam(list(vision_transformer.parameters()) + list(text_transformer.parameters()), lr=1e-5)
     
     num_epochs = 500
+    warmup_steps = 1000
     print(f"Starting training for {num_epochs} epochs with {num_test_samples} samples")
-    
+    wandb.init(project="Contrastive-loss", config={
+        "learning_rate": 1e-5,
+        "batch_size": batch_size,
+        "num_epochs": num_epochs,
+        "num_train_samples": num_train_samples,
+        "num_test_samples": num_test_samples,
+        "warmup_steps": warmup_steps
+    })
     start_time = time.time()
     vision_transformer, text_transformer, train_losses, train_accuracies = train(num_epochs, train_dataloader, vision_transformer, text_transformer, optimizer, device)
     train_time = time.time() - start_time
@@ -237,9 +293,19 @@ def main():
     print("Starting validation")
     start_time = time.time()
     for epoch in range(num_epochs):
-        val_loss, val_accuracy = evaluate(vision_transformer, text_transformer, val_dataloader, device)
+        val_loss, val_accuracy, i2t_accuracy, t2i_accuracy  = evaluate(vision_transformer, text_transformer, val_dataloader, device, epoch, warmup_steps)
         val_losses.append(val_loss)
         val_accuracies.append(val_accuracy)
+        best_val_accuracy = max(best_val_accuracy, val_accuracy)
+
+        wandb.log({
+            "epoch": epoch + 1,
+            "epoch_val_loss": val_loss,
+            "epoch_val_accuracy": val_accuracy,
+            "epoch_i2t_accuracy": i2t_accuracy,
+            "epoch_t2i_accuracy": t2i_accuracy,
+            "best_val_accuracy": best_val_accuracy,
+        })
         print(f"Epoch [{epoch+1}/{num_epochs}], Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}")
     val_time = time.time() - start_time
     print(f"Validation completed in {val_time:.2f} seconds")
@@ -251,6 +317,14 @@ def main():
     
     torch.save(vision_transformer.state_dict(), 'vision_transformer.pth')
     torch.save(text_transformer.state_dict(), 'text_transformer.pth')
+    wandb.save('vision_transformer.pth')
+    wandb.save('text_transformer.pth')
+
+    # Finish the wandb run
+    wandb.finish()    
+
+
+
 
 if __name__ == '__main__':
     main()

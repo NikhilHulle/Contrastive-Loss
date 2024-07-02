@@ -29,11 +29,11 @@ def diagonal_cross_entropy_loss(similarity_matrix, captions_per_image, temperatu
     device = similarity_matrix.device
     batch_size = similarity_matrix.size(0)
     
-    # Ensure captions_per_image is a tensor
+    
     if not isinstance(captions_per_image, torch.Tensor):
         captions_per_image = torch.tensor(captions_per_image, device=device)
     
-    # Create labels for positive pairs
+   
     labels = torch.arange(batch_size, device=device).repeat_interleave(captions_per_image)
     
     # Reshape similarity matrix to match labels
@@ -44,19 +44,25 @@ def diagonal_cross_entropy_loss(similarity_matrix, captions_per_image, temperatu
     
     return (loss_i2t + loss_t2i) / 2
 
-def compute_accuracy(similarity_matrix, captions_per_image):
+def compute_accuracy(similarity_matrix, captions_per_image, mode='i2t'):
     device = similarity_matrix.device
-    batch_size = similarity_matrix.size(0)
     
     # Ensure captions_per_image is a tensor
     if not isinstance(captions_per_image, torch.Tensor):
         captions_per_image = torch.tensor(captions_per_image, device=device)
     
-    # Create labels for positive pairs
-    labels = torch.arange(batch_size, device=device).repeat_interleave(captions_per_image)
-    
-    # Reshape similarity matrix to match labels
-    similarity_matrix = similarity_matrix.repeat_interleave(captions_per_image, dim=0)
+    if mode == 'i2t':
+        # Image-to-text accuracy
+        batch_size = similarity_matrix.size(0)
+        labels = torch.arange(batch_size, device=device).repeat_interleave(captions_per_image)
+        similarity_matrix = similarity_matrix.repeat_interleave(captions_per_image, dim=0)
+    elif mode == 't2i':
+        # Text-to-image accuracy
+        batch_size = similarity_matrix.size(1)
+        labels = torch.arange(batch_size, device=device).repeat_interleave(captions_per_image)
+        similarity_matrix = similarity_matrix.t()  # Transpose for text-to-image
+    else:
+        raise ValueError("Mode must be either 'i2t' or 't2i'")
     
     # Compute predictions
     _, predicted = similarity_matrix.max(1)
@@ -157,7 +163,6 @@ def evaluate(model_vision, model_text, dataloader, device, epoch):
     model_text.eval()
     
     total_loss = 0.0
-    total_accuracy = 0.0
     total_i2t_accuracy = 0.0
     total_t2i_accuracy = 0.0
     
@@ -179,23 +184,19 @@ def evaluate(model_vision, model_text, dataloader, device, epoch):
             
             # Compute loss
             loss = diagonal_cross_entropy_loss(similarity_matrix, captions_per_image)
-            
 
-            i2t_accuracy = compute_accuracy(similarity_matrix, captions_per_image)
-            t2i_accuracy = compute_accuracy(similarity_matrix.t(), captions_per_image)
+            i2t_accuracy = compute_accuracy(similarity_matrix, captions_per_image, mode='i2t')
+            t2i_accuracy = compute_accuracy(similarity_matrix, captions_per_image, mode='t2i')
         
-            # Compute accuracy
-            # accuracy = compute_accuracy(similarity_matrix, captions_per_image)
-            
             total_loss += loss.item()
-            total_accuracy += (i2t_accuracy + t2i_accuracy) / 2
             total_i2t_accuracy += i2t_accuracy
             total_t2i_accuracy += t2i_accuracy
     
     avg_loss = total_loss / len(dataloader)
-    avg_accuracy = total_accuracy / len(dataloader)
     avg_i2t_accuracy = total_i2t_accuracy / len(dataloader)
     avg_t2i_accuracy = total_t2i_accuracy / len(dataloader)
+    avg_accuracy = (avg_i2t_accuracy + avg_t2i_accuracy) / 2
+
     wandb.log({
         "epoch": epoch + 1,
         "val_loss": avg_loss,
@@ -206,41 +207,41 @@ def evaluate(model_vision, model_text, dataloader, device, epoch):
     
     return avg_loss, avg_accuracy, avg_i2t_accuracy, avg_t2i_accuracy
 
-def plot_metrics(train_losses, train_accuracies, val_losses, val_accuracies):
-    epochs = range(1, len(train_losses) + 1)
+# def plot_metrics(train_losses, train_accuracies, val_losses, val_accuracies):
+#     epochs = range(1, len(train_losses) + 1)
 
-    plt.figure(figsize=(12, 5))
+#     plt.figure(figsize=(12, 5))
     
-    plt.subplot(1, 2, 1)
-    plt.plot(epochs, train_losses, 'b-', label='Training Loss')
-    plt.plot(epochs, val_losses, 'r-', label='Validation Loss')
-    plt.title('Training and Validation Loss')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.legend()
+#     plt.subplot(1, 2, 1)
+#     plt.plot(epochs, train_losses, 'b-', label='Training Loss')
+#     plt.plot(epochs, val_losses, 'r-', label='Validation Loss')
+#     plt.title('Training and Validation Loss')
+#     plt.xlabel('Epochs')
+#     plt.ylabel('Loss')
+#     plt.legend()
 
-    plt.subplot(1, 2, 2)
-    plt.plot(epochs, train_accuracies, 'b-', label='Training Accuracy')
-    plt.plot(epochs, val_accuracies, 'r-', label='Validation Accuracy')
-    plt.title('Training and Validation Accuracy')
-    plt.xlabel('Epochs')
-    plt.ylabel('Accuracy')
-    plt.legend()
+#     plt.subplot(1, 2, 2)
+#     plt.plot(epochs, train_accuracies, 'b-', label='Training Accuracy')
+#     plt.plot(epochs, val_accuracies, 'r-', label='Validation Accuracy')
+#     plt.title('Training and Validation Accuracy')
+#     plt.xlabel('Epochs')
+#     plt.ylabel('Accuracy')
+#     plt.legend()
 
-    plt.tight_layout()
+#     plt.tight_layout()
     
-    # Save the figure
-    plt.savefig('training_metrics.png')
-    print(f"Figure saved as 'training_metrics.png'")
+#     # Save the figure
+#     plt.savefig('training_metrics.png')
+#     print(f"Figure saved as 'training_metrics.png'")
     
-    # Try to display the figure
-    try:
-        plt.show()
-    except Exception as e:
-        print(f"Couldn't display the figure. Error: {e}")
+#     # Try to display the figure
+#     try:
+#         plt.show()
+#     except Exception as e:
+#         print(f"Couldn't display the figure. Error: {e}")
     
-    # Close the figure to free up memory
-    plt.close()
+#     # Close the figure to free up memory
+#     plt.close()
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -309,7 +310,7 @@ def main():
     val_time = time.time() - start_time
     print(f"Validation completed in {val_time:.2f} seconds")
 
-    plot_metrics(train_losses, train_accuracies, val_losses, val_accuracies)
+    # plot_metrics(train_losses, train_accuracies, val_losses, val_accuracies)
     
     # print("Displaying the saved image:")
     # display(Image('training_metrics.png'))

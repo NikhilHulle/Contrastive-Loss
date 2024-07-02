@@ -3,73 +3,27 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 
-# class VisionTransformer(nn.Module):
-#     def __init__(self, image_size=224, patch_size=16, num_layers=12, num_heads=12, hidden_dim=768, mlp_dim=3072):
-#         super().__init__()
-#         self.patch_size = patch_size
-#         self.hidden_dim = hidden_dim
-        
-#         # Patch embedding
-#         self.patch_embedding = nn.Conv2d(3, hidden_dim, kernel_size=patch_size, stride=patch_size)
-#         num_patches = (image_size // patch_size) ** 2
-#         self.pos_embedding = nn.Parameter(torch.zeros(1, num_patches + 1, hidden_dim))
-#         self.cls_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
-        
-#         # Transformer encoder layers
-#         self.encoder_layers = nn.ModuleList([
-#             nn.TransformerEncoderLayer(hidden_dim, num_heads, mlp_dim)
-#             for _ in range(num_layers)
-#         ])
-        
-#         # Normalization and pooling
-#         self.norm = nn.LayerNorm(hidden_dim)
-#         self.pool = nn.AdaptiveAvgPool1d(1)
-    
-#     def forward(self, x):
-#         # Patch embedding
-#         x = self.patch_embedding(x)
-#         x = x.flatten(2).transpose(1, 2)
-        
-#         # Add class token and positional embeddings
-#         cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
-#         x = torch.cat((cls_tokens, x), dim=1)
-#         x = x + self.pos_embedding
-        
-#         # Transformer encoder layers
-#         for layer in self.encoder_layers:
-#             x = layer(x)
-        
-#         # Normalization and pooling
-#         x = self.norm(x)
-#         x = x[:, 0]  # Take the class token representation
-#         x = self.pool(x.unsqueeze(1)).squeeze(1)
-        
-#         return x
-
 class VisionTransformer(nn.Module):
     def __init__(self, image_size=224, patch_size=16, num_layers=12, num_heads=12, hidden_dim=768, mlp_dim=3072):
         super().__init__()
         self.patch_size = patch_size
         self.hidden_dim = hidden_dim
         
-        # Patch embedding
+       
         self.patch_embedding = nn.Conv2d(3, hidden_dim, kernel_size=patch_size, stride=patch_size)
         num_patches = (image_size // patch_size) ** 2
         self.pos_embedding = nn.Parameter(torch.zeros(1, num_patches + 1, hidden_dim))
         self.cls_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
         
-        # Transformer encoder layers
+        
         self.encoder_layers = nn.ModuleList([
             nn.TransformerEncoderLayer(hidden_dim, num_heads, mlp_dim)
             for _ in range(num_layers)
         ])
         
-        # Normalization and simplifying pooling
+        
         self.norm = nn.LayerNorm(hidden_dim)
-        # Updated pooling: changed it to match feature dimensions
-        # self.pool = nn.AdaptiveAvgPool1d(1)  # Old problematic pooling
-        # self.pool = nn.Identity()  # No pooling, output as is from the last layer
     
     def forward(self, x):
         # Patch embedding
@@ -87,8 +41,7 @@ class VisionTransformer(nn.Module):
         
         # Normalization and pooling
         x = self.norm(x)
-        x = x.mean(dim=1)  # Using mean pooling across the token dimension
-        # x = self.pool(x)  # If using modified pool
+        x = x.mean(dim=1)  
         logit_scale = torch.clamp(self.logit_scale.exp(), max=100)
 
         return x * logit_scale
@@ -119,28 +72,6 @@ class TextTransformer(nn.Module):
         self.pool = nn.AdaptiveAvgPool1d(1)
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
     
-    # def forward(self, input_ids, attention_mask=None):
-    #     # Token embedding
-    #     x = self.token_embedding(input_ids)
-        
-    #     # Add positional embeddings
-    #     seq_len = x.size(1)
-    #     x = x + self.pos_embedding[:, :seq_len]
-        
-    #     # Apply attention mask if provided
-    #     if attention_mask is not None:
-    #         attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-    #         attention_mask = (1.0 - attention_mask) * -10000.0
-    #         x = x + attention_mask
-        
-    #     # Transformer encoder layers
-    #     x = self.encoder_layers(x)
-        
-    #     # Normalization and pooling
-    #     x = self.norm(x)
-    #     x = self.pool(x.transpose(1, 2)).squeeze(2)
-        
-    #     return x
 
     def forward(self, input_ids, attention_mask=None):
         print("Initial input_ids shape:", input_ids.shape)

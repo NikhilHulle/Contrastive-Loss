@@ -14,15 +14,19 @@ import wandb
 import random
 
 def custom_collate_fn(batch):
-    images = torch.stack([item['image'] for item in batch if item['image'] is not None])
-    all_captions = [item['captions'] for item in batch]
+    images = []
+    captions = []
+    for item in batch:
+        if item['image'] is not None:
+            images.append(item['image'])
+            # Randomly select one caption for this image
+            selected_caption = random.choice(item['captions'])
+            captions.append(selected_caption)
     
-    # Randomly select one caption per image
-    selected_captions = [random.choice(captions) for captions in all_captions]
+    images = torch.stack(images)
+    captions = pad_sequence(captions, batch_first=True, padding_value=0)
     
-    padded_captions = pad_sequence(selected_captions, batch_first=True, padding_value=0)
-    
-    return {'images': images, 'captions': padded_captions}
+    return {'images': images, 'captions': captions}
 
 def contrastive_loss(logits: torch.Tensor) -> torch.Tensor:
     return nn.functional.cross_entropy(logits, torch.arange(len(logits), device=logits.device))

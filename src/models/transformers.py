@@ -60,15 +60,14 @@ class TextTransformer(nn.Module):
 
         x = x + pos_emb
 
-        x = self.pre_norm(x) # change 6
+        x = self.pre_norm(x)
 
-        if attention_mask is not None: # change 7
-            attention_mask = attention_mask.bool()
-            # Create a causal mask for masked self-attention**
-            causal_mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool().to(input_ids.device)
-            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2) & ~causal_mask.unsqueeze(0)
+        if attention_mask is not None: # change 6
+            # Convert boolean mask to float mask where 0.0 means masked (padding)
+            attention_mask = attention_mask.float().masked_fill(attention_mask == 0, float('-inf')).masked_fill(attention_mask == 1, float(0.0))
+            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)  # (batch_size, 1, 1, seq_len)
 
-        x = self.encoder_layers(x, src_mask=attention_mask)
+        x = self.encoder_layers(x, src_key_padding_mask=attention_mask)
 
         return x[:, 0]  # Return the [CLS] token representation
 

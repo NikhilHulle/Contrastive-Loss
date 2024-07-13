@@ -3,6 +3,11 @@ pip install datasets
 pip install pyarrow
 pip install torch torchvision
 pip install pycocotools
+pip install transformers
+pip install datasets
 
+# conda source ...
 # conda activate /projects/nihu3946/envs/ICLR
 # export PYTHONUSERBASE=/projects/nihu3946/envs/ICLR/pip_packages
+# export HF_HOME=/projects/nihu3946/huggingface_cache
+

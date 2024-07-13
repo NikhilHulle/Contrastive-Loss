@@ -71,6 +71,7 @@ def train(num_epochs, dataloader, clip_model, optimizer, device, warmup_steps=10
 
             optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(clip_model.parameters(), max_norm=1.0) # change 1 -> clipping the gradients
             optimizer.step()
             
             epoch_loss += loss.item()
@@ -118,10 +119,15 @@ def evaluate(clip_model, dataloader, device, epoch):
             
             similarity_matrix = clip_model(images, captions)
             
+            # Image-to-text contrastive loss
             i2t_loss = contrastive_loss(similarity_matrix)
+            # Text-to-image contrastive loss
             t2i_loss = contrastive_loss(similarity_matrix.t())
+            
+            # Total loss is the average of both directions
             loss = (i2t_loss + t2i_loss) / 2
             
+            # Compute accuracy for both directions
             i2t_accuracy = compute_accuracy(similarity_matrix)
             t2i_accuracy = compute_accuracy(similarity_matrix.t())
         
@@ -129,9 +135,10 @@ def evaluate(clip_model, dataloader, device, epoch):
             total_i2t_accuracy += i2t_accuracy
             total_t2i_accuracy += t2i_accuracy
     
-    avg_loss = total_loss / len(dataloader)
-    avg_i2t_accuracy = total_i2t_accuracy / len(dataloader)
-    avg_t2i_accuracy = total_t2i_accuracy / len(dataloader)
+    num_batches = len(dataloader)
+    avg_loss = total_loss / num_batches
+    avg_i2t_accuracy = total_i2t_accuracy / num_batches
+    avg_t2i_accuracy = total_t2i_accuracy / num_batches
     avg_accuracy = (avg_i2t_accuracy + avg_t2i_accuracy) / 2
 
     wandb.log({
@@ -168,14 +175,18 @@ def main():
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
-    vision_transformer = VisionTransformer().to(device)
-    text_transformer = TextTransformer(vocab_size=tokenizer.vocab_size, max_seq_len=64).to(device)
-    clip_model = CLIPModel(vision_transformer, text_transformer).to(device)
+    # vision_transformer = VisionTransformer().to(device)
+    # text_transformer = TextTransformer(vocab_size=tokenizer.vocab_size, max_seq_len=64).to(device)
+    # clip_model = CLIPModel(vision_transformer, text_transformer).to(device)
+
+    vision_transformer = VisionTransformer(image_size=224, patch_size=16, num_layers=12, num_heads=12, hidden_dim=768, mlp_dim=3072).to(device)
+    text_transformer = TextTransformer(vocab_size=tokenizer.vocab_size, max_seq_len=76, num_layers=12, num_heads=12, hidden_dim=768, mlp_dim=3072).to(device)
+    clip_model = CLIPModel(vision_transformer, text_transformer, projection_dim=512).to(device)
     
     optimizer = torch.optim.Adam(clip_model.parameters(), lr=1e-5)
     
     num_epochs = 500
-    warmup_steps = 1000
+    warmup_steps = 10000
     print(f"Starting training for {num_epochs} epochs")
     wandb.init(project="Contrastive-loss", config={
         "learning_rate": 1e-5,

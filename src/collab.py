@@ -186,7 +186,7 @@ def main():
     
     optimizer = torch.optim.Adam(clip_model.parameters(), lr=1e-5)
     
-    num_epochs = 50
+    num_epochs = 30
     warmup_steps = 10000
     print(f"Starting training for {num_epochs} epochs")
     wandb.init(project="Contrastive-loss", config={

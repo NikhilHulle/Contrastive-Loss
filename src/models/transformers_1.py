@@ -14,13 +14,12 @@ class VisionTransformer(nn.Module):
         self.pos_embedding = nn.Parameter(torch.zeros(1, num_patches + 1, hidden_dim))
         self.cls_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
         
+        self.pre_norm = nn.LayerNorm(hidden_dim) # change 1
         self.encoder_layers = nn.ModuleList([
-            nn.TransformerEncoderLayer(hidden_dim, num_heads, mlp_dim)
+            nn.TransformerEncoderLayer(hidden_dim, num_heads, mlp_dim, norm_first=True) # change 2
             for _ in range(num_layers)
         ])
-        
-        self.norm = nn.LayerNorm(hidden_dim)
-    
+
     def forward(self, x):
         x = self.patch_embedding(x)
         x = x.flatten(2).transpose(1, 2)
@@ -29,15 +28,14 @@ class VisionTransformer(nn.Module):
         x = torch.cat((cls_tokens, x), dim=1)
         x = x + self.pos_embedding
         
+        x = self.pre_norm(x)
         for layer in self.encoder_layers:
             x = layer(x)
         
-        x = self.norm(x)
-        x = x.mean(dim=1)
-        return x
+        return x[:, 0]  # Return the [CLS] token representation
 
 class TextTransformer(nn.Module):
-    def __init__(self, vocab_size, max_seq_len, num_layers=12, num_heads=12, hidden_dim=768, mlp_dim=3072):
+    def __init__(self, vocab_size=49152, max_seq_len=76, num_layers=12, num_heads=12, hidden_dim=768, mlp_dim=3072): # change 3
         super().__init__()
         self.hidden_dim = hidden_dim
         self.max_seq_len = max_seq_len
@@ -45,18 +43,13 @@ class TextTransformer(nn.Module):
         self.token_embedding = nn.Embedding(vocab_size, hidden_dim)
         self.pos_embedding = nn.Parameter(torch.zeros(1, max_seq_len, hidden_dim))
         
+        self.pre_norm = nn.LayerNorm(hidden_dim) # change 4
         self.encoder_layers = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(hidden_dim, num_heads, mlp_dim),
+            nn.TransformerEncoderLayer(hidden_dim, num_heads, mlp_dim, norm_first=True), # change 5
             num_layers
         )
-        
-        self.norm = nn.LayerNorm(hidden_dim)
-        self.pool = nn.AdaptiveAvgPool1d(1)
 
     def forward(self, input_ids, attention_mask=None):
-        print("Initial input_ids shape:", input_ids.shape)
-        print("Initial attention_mask shape:", attention_mask.shape if attention_mask is not None else None)
-
         x = self.token_embedding(input_ids)
         seq_len = x.size(1)
 
@@ -67,29 +60,40 @@ class TextTransformer(nn.Module):
 
         x = x + pos_emb
 
-        if attention_mask is not None:
-            attention_mask = attention_mask.bool()
-            print("Boolean attention_mask shape:", attention_mask.shape)
+        x = self.pre_norm(x)
+
+        if attention_mask is not None: # change 6
+            # Convert boolean mask to float mask where 0.0 means masked (padding)
+            attention_mask = attention_mask.float().masked_fill(attention_mask == 0, float('-inf')).masked_fill(attention_mask == 1, float(0.0))
+            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)  # (batch_size, 1, 1, seq_len)
 
         x = self.encoder_layers(x, src_key_padding_mask=attention_mask)
-        print("After encoder layers shape:", x.shape)
 
-        x = self.norm(x)
-        x = self.pool(x.transpose(1, 2)).squeeze(2)
-        print("Final output shape:", x.shape)
-
-        return x
+        return x[:, 0]  # Return the [CLS] token representation
 
 class CLIPModel(nn.Module):
-    def __init__(self, vision_model, text_model):
+    def __init__(self, vision_model, text_model, projection_dim=512):   # change 8
         super().__init__()
         self.vision_model = vision_model
         self.text_model = text_model
+        # self.image_projection = nn.Linear(vision_model.hidden_dim, projection_dim) # change 9
+        # self.text_projection = nn.Linear(text_model.hidden_dim, projection_dim) # change 10
+        self.image_projection = nn.Sequential(
+            nn.Linear(vision_model.hidden_dim, projection_dim),
+            nn.LayerNorm(projection_dim)
+        )
+        self.text_projection = nn.Sequential(
+            nn.Linear(text_model.hidden_dim, projection_dim),
+            nn.LayerNorm(projection_dim)
+)
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
     def forward(self, images, captions):
         image_features = self.vision_model(images)
         text_features = self.text_model(captions)
+        
+        image_features = self.image_projection(image_features)
+        text_features = self.text_projection(text_features)
         
         image_features = F.normalize(image_features, dim=-1)
         text_features = F.normalize(text_features, dim=-1)

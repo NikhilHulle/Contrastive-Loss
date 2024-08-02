@@ -81,7 +81,7 @@ class TextTransformer(nn.Module):
         return x
 
 class CLIPModel(nn.Module):
-    def __init__(self, vision_model, text_model):
+    def __init__(self, vision_model, text_model, projection_dim=512):
         super().__init__()
         self.vision_model = vision_model
         self.text_model = text_model

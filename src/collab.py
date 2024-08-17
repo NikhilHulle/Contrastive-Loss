@@ -67,7 +67,7 @@ def train_epoch(dataloader, clip_model, optimizer, device, epoch, warmup_steps):
         t2i_accuracy = compute_accuracy(similarity_matrix.t())
 
         loss.backward()
-        #torch.nn.utils.clip_grad_norm_(clip_model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(clip_model.parameters(), max_norm=1.0)
         optimizer.step()
 
         epoch_loss += loss.item()
@@ -91,38 +91,61 @@ def train_epoch(dataloader, clip_model, optimizer, device, epoch, warmup_steps):
     return epoch_loss, epoch_accuracy, epoch_i2t_accuracy, epoch_t2i_accuracy
 
 
-def evaluate(clip_model, dataloader, device):
+def evaluate(clip_model, dataloader, device, epoch):
     clip_model.eval()
     total_loss = 0.0
     total_i2t_accuracy = 0.0
     total_t2i_accuracy = 0.0
     
     with torch.no_grad():
-        for batch in tqdm(dataloader, desc="Evaluating"):
+        for batch_idx, batch in enumerate(tqdm(dataloader, desc="Evaluating")):
             images, captions = batch['images'].to(device), batch['captions'].to(device)
+            
+            # Log the shapes of the batch inputs
+           
+            
             similarity_matrix = clip_model(images, captions)
+            
+            # Log the similarity matrix stats
+           
             
             i2t_loss = contrastive_loss(similarity_matrix)
             t2i_loss = contrastive_loss(similarity_matrix.t())
             loss = (i2t_loss + t2i_loss) / 2
             
+            # Log the loss values for each batch
+            
+            
             i2t_accuracy = compute_accuracy(similarity_matrix)
             t2i_accuracy = compute_accuracy(similarity_matrix.t())
+            
+            # Log the accuracy for each batch
+            
         
             total_loss += loss.item()
             total_i2t_accuracy += i2t_accuracy
             total_t2i_accuracy += t2i_accuracy
-    
-    num_batches = len(dataloader)
-    avg_loss = total_loss / num_batches
-    avg_i2t_accuracy = total_i2t_accuracy / num_batches
-    avg_t2i_accuracy = total_t2i_accuracy / num_batches
-    avg_accuracy = (avg_i2t_accuracy + avg_t2i_accuracy) / 2
+
+        # Calculate average metrics after processing all batches
+        num_batches = len(dataloader)
+        avg_loss = total_loss / num_batches
+        avg_i2t_accuracy = total_i2t_accuracy / num_batches
+        avg_t2i_accuracy = total_t2i_accuracy / num_batches
+        avg_accuracy = (avg_i2t_accuracy + avg_t2i_accuracy) / 2
+
+        # Log the final averaged metrics
+        wandb.log({
+            "epoch": epoch + 1,
+            "eval/avg_loss": avg_loss,
+            "eval/avg_i2t_accuracy": avg_i2t_accuracy,
+            "eval/avg_t2i_accuracy": avg_t2i_accuracy,
+            "eval/avg_accuracy": avg_accuracy,
+        })
 
     return avg_loss, avg_accuracy, avg_i2t_accuracy, avg_t2i_accuracy
 
 def main():
-    device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
     tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
@@ -133,18 +156,18 @@ def main():
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-    num_test_samples = 128
-    num_train_samples = 640
+    num_test_samples = 10000
+    # num_train_samples = 640
     full_train_dataset = MSCOCODataset(split='train', transform=transform, tokenizer=tokenizer)
     full_val_dataset = MSCOCODataset(split='validation', transform=transform, tokenizer=tokenizer)
 
-    train_dataset = Subset(full_train_dataset, range(num_train_samples))
-    # train_dataset = full_train_dataset
+    # train_dataset = Subset(full_train_dataset, range(num_train_samples))
+    train_dataset = full_train_dataset
     val_dataset = Subset(full_val_dataset, range(num_test_samples))
 
     batch_size = 64
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
+    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
 
     # vision_transformer = VisionTransformer().to(device)
     # text_transformer = TextTransformer(vocab_size=tokenizer.vocab_size, max_seq_len=64).to(device)
@@ -156,7 +179,8 @@ def main():
     
     optimizer = torch.optim.Adam(clip_model.parameters(), lr=1e-5)
     
-    num_epochs = 100
+    num_epochs = 30
+    #warmup_steps = 10000
     warmup_steps = 10000
     print(f"Starting training for {num_epochs} epochs")
     experiment_name = 'CLS_token_Training'
@@ -181,7 +205,7 @@ def main():
         
         # Validation
         val_loss, val_accuracy, val_i2t_accuracy, val_t2i_accuracy = evaluate(
-            clip_model, val_dataloader, device)
+            clip_model, val_dataloader, device, epoch)
         
         epoch_time = time.time() - epoch_start_time
         best_val_accuracy = max(best_val_accuracy, val_accuracy)

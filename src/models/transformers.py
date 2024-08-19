@@ -24,7 +24,7 @@ class VisionTransformer(nn.Module):
         self.pos_embedding = nn.Embedding(num_patches+1, hidden_dim)
         self.cls_token = nn.Embedding(1, hidden_dim)
         self.pre_norm = nn.LayerNorm(hidden_dim)
-        encoder_layer = nn.TransformerEncoderLayer(hidden_dim, num_heads, mlp_dim, norm_first=True)
+        encoder_layer = nn.TransformerEncoderLayer(hidden_dim, num_heads, mlp_dim, norm_first=True, batch_first=True)
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers)
         
         self.apply(self._init_weights)
@@ -85,7 +85,7 @@ class TextTransformer(nn.Module):
         self.pos_embedding = nn.Embedding(max_seq_len, hidden_dim)
         
         self.pre_norm = nn.LayerNorm(hidden_dim)
-        encoder_layer = nn.TransformerEncoderLayer(hidden_dim, num_heads, mlp_dim, norm_first=True)
+        encoder_layer = nn.TransformerEncoderLayer(hidden_dim, num_heads, mlp_dim, norm_first=True, batch_first=True)
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers)
         
         self.apply(self._init_weights)
@@ -123,6 +123,7 @@ class TextTransformer(nn.Module):
         if attention_mask is not None:
             attention_mask = attention_mask == 0
             check_tensor(attention_mask.float(), "Attention mask")
+
 
         x = self.encoder(x, src_key_padding_mask=attention_mask)
         # check_tensor(x, "After encoder")
